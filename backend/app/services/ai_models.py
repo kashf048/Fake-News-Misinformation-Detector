@@ -90,15 +90,19 @@ class AIModels:
                 
             # Logic for "Misleading": if the difference is very small, it's uncertain/misleading
             diff = abs(real_prob - fake_prob)
-            if diff < 0.2:
+            if diff < 0.15: # Slightly more sensitive threshold
                 prediction = "Misleading"
-                confidence = max(real_prob, fake_prob)
+                # Use a combined confidence for misleading (capped at 75% for misleading)
+                confidence = 0.55 + (diff / 0.3) * 0.2
             elif fake_prob > real_prob:
                 prediction = "Fake"
                 confidence = fake_prob
             else:
                 prediction = "Real"
                 confidence = real_prob
+            
+            # Calibration: avoid 100% or absolute certainty in AI outputs
+            confidence = min(0.985, float(confidence))
             
             return prediction, confidence
             
@@ -113,8 +117,13 @@ class AIModels:
         Returns: similarity score (0-1)
         """
         try:
-            # Download image
-            response = requests.get(image_url, timeout=10)
+            # Download image with user-agent to avoid blocks
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            response = requests.get(image_url, timeout=10, headers=headers)
+            response.raise_for_status() # Raise error for bad status
+            
             image = Image.open(BytesIO(response.content)).convert("RGB")
             
             # Prepare inputs
@@ -137,16 +146,16 @@ class AIModels:
                 # Calculate cosine similarity
                 similarity = (image_features @ text_features.T).item()
                 
-            # Logits are typically 0.2 to 0.3 for related stuff, normalize to a visible range
-            # We use a simple sigmoid-like mapping or just scale it
-            normalized_similarity = max(0.0, min(1.0, (similarity + 1) / 2))
-            
-            # For CLIP, 0.25+ is often "related", 0.3+ is "high similarity"
-            # Let's rescale so 0.2 is the floor for any "relatedness"
-            if normalized_similarity < 0.6: # cosine similarity of 0.2 maps to (0.2+1)/2 = 0.6
-                 final_similarity = normalized_similarity * 0.5 # Squash unrelated
+            # Logit calibration: CLIP values are often compressed
+            # We map the 0.05-0.35 raw cosine similarity to 0-1 range
+            if similarity < 0.05:
+                final_similarity = 0.0
+            elif similarity < 0.25:
+                # Linear map [0.05, 0.25] -> [0.05, 0.75]
+                final_similarity = 0.05 + (similarity - 0.05) * 3.5
             else:
-                 final_similarity = normalized_similarity 
+                # Linear map [0.25, 0.4+] -> [0.75, 0.98]
+                final_similarity = min(0.98, 0.75 + (similarity - 0.25) * 1.5)
 
             return float(final_similarity)
             

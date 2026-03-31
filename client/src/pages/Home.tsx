@@ -53,10 +53,24 @@ export default function Home() {
     if (!result) return;
     
     try {
-      // In a real implementation, this would call a backend endpoint to generate PDF
-      toast.info('PDF download feature coming soon');
+      toast.loading('Generating PDF report...', { id: 'pdf-download' });
+      const blob = await apiService.downloadReport(result._id);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `fake_news_report_${result._id.substring(0, 8)}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('PDF report downloaded!', { id: 'pdf-download' });
     } catch (err) {
-      toast.error('Failed to download PDF');
+      toast.error('Failed to download PDF', { id: 'pdf-download' });
     }
   };
 

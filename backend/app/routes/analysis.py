@@ -65,6 +65,37 @@ async def analyze(request: AnalysisRequest):
         # Search for fact checks
         fact_checks = await FactCheckService.search_fact_checks(request.headline)
         
+        # Combined Decision Engines
+        if fact_checks:
+            logger.info(f"[yellow]Applying hybrid decision logic with fact-check evidence...[/yellow]")
+            consensus, fc_weight = FactCheckService.get_weighted_evidence(fact_checks)
+            
+            # Map prediction: Fake -> -1.0, Real -> 1.0, Misleading -> 0.0
+            ai_score = -1.0 if prediction == "Fake" else 1.0 if prediction == "Real" else 0.0
+            
+            # Weighted average - Fact checks are stronger (60%) if they exist and are high quality
+            final_score = (ai_score * (1.0 - fc_weight * 0.7)) + (consensus * (fc_weight * 0.7))
+            
+            # Recalculate prediction and confidence
+            if final_score < -0.2:
+                prediction = "Fake"
+                confidence = min(0.99, abs(final_score) + 0.1)
+            elif final_score > 0.2:
+                prediction = "Real"
+                confidence = min(0.99, abs(final_score) + 0.1)
+            else:
+                prediction = "Misleading"
+                confidence = max(0.5, 1.0 - abs(final_score))
+            
+            # Cap confidence to avoid 100% or extreme values
+            confidence = min(0.98, max(0.55, confidence))
+            
+            # Update explanation based on combined results
+            if consensus < -0.4 and ai_score > 0.4:
+                explanation = f"While AI analysis initially categorized this as potentially real, multiple external fact-checks from authoritative sources have flagged it as inaccurate. Based on verified evidence, this content is categorized as misinformation."
+            elif consensus > 0.4 and ai_score < -0.4:
+                explanation = f"Although initial detection patterns suggested irregularities, external fact-checking verification indicates the claim is largely factual or supported by reputable sources."
+
         # Save to database
         analysis_id = await AnalysisService.save_analysis(
             headline=request.headline,

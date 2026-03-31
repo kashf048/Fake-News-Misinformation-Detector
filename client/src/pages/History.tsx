@@ -61,6 +61,29 @@ export default function History() {
     }
   };
 
+  const handleDownloadPDF = async (id: string) => {
+    try {
+      toast.loading('Generating PDF report...', { id: 'pdf-download' });
+      const blob = await apiService.downloadReport(id);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `fake_news_report_${id.substring(0, 8)}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('PDF report downloaded!', { id: 'pdf-download' });
+    } catch (err) {
+      toast.error('Failed to download PDF', { id: 'pdf-download' });
+    }
+  };
+
   const totalPages = Math.ceil(total / limit);
 
   return (
@@ -153,7 +176,10 @@ export default function History() {
                     >
                       ← Back to List
                     </Button>
-                    <ResultCard result={selectedAnalysis} />
+                    <ResultCard
+                      result={selectedAnalysis}
+                      onDownloadPDF={() => handleDownloadPDF(selectedAnalysis._id)}
+                    />
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -172,12 +198,13 @@ export default function History() {
                       <>
                         <div className="space-y-3">
                           {analyses.map(analysis => (
-                            <HistoryCard
-                              key={analysis._id}
-                              analysis={analysis}
-                              onDelete={handleDelete}
-                              onClick={() => setSelectedAnalysis(analysis)}
-                            />
+                             <HistoryCard
+                                key={analysis._id}
+                                analysis={analysis}
+                                onDelete={handleDelete}
+                                onDownload={handleDownloadPDF}
+                                onClick={() => setSelectedAnalysis(analysis)}
+                              />
                           ))}
                         </div>
 

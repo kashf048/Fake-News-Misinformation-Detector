@@ -2,17 +2,18 @@
  * HistoryCard Component
  */
 
-import { AlertCircle, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react';
+import { AlertCircle, CheckCircle, AlertTriangle, Trash2, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AnalysisResponse } from '@/services/api';
 
 interface HistoryCardProps {
   analysis: AnalysisResponse;
   onDelete?: (id: string) => void;
+  onDownload?: (id: string) => void;
   onClick?: () => void;
 }
 
-export default function HistoryCard({ analysis, onDelete, onClick }: HistoryCardProps) {
+export default function HistoryCard({ analysis, onDelete, onDownload, onClick }: HistoryCardProps) {
   const getPredictionIcon = () => {
     switch (analysis.prediction) {
       case 'Fake':
@@ -68,20 +69,36 @@ export default function HistoryCard({ analysis, onDelete, onClick }: HistoryCard
           </p>
         </div>
 
-        {/* Delete Button */}
-        {onDelete && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(analysis._id);
-            }}
-            className="text-red-500 hover:text-red-700 hover:bg-red-50"
-          >
-            <Trash2 size={16} />
-          </Button>
-        )}
+        {/* Actions */}
+        <div className="flex flex-col gap-2">
+          {onDownload && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDownload(analysis._id);
+              }}
+              className="text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+            >
+              <Download size={16} />
+            </Button>
+          )}
+
+          {onDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(analysis._id);
+              }}
+              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+            >
+              <Trash2 size={16} />
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

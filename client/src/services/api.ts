@@ -132,6 +132,21 @@ class APIService {
   }
 
   /**
+   * Download analysis report PDF
+   */
+  async downloadReport(id: string): Promise<Blob> {
+    try {
+      const response = await this.client.get(`/api/history/${id}/pdf`, {
+        responseType: 'blob',
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error as AxiosError);
+      throw error;
+    }
+  }
+
+  /**
    * Health check
    */
   async healthCheck(): Promise<{ status: string }> {

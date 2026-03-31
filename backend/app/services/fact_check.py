@@ -64,6 +64,51 @@ class FactCheckService:
             return []
     
     @staticmethod
+    def normalize_rating(rating: str) -> float:
+        """
+        Normalize textual rating to a score between -1 and 1.
+        -1: Fake, 0: Uncertain/Mixed, 1: Real
+        """
+        rating_lower = rating.lower()
+        
+        # Fake indicators
+        if any(word in rating_lower for word in ['false', 'fake', 'incorrect', 'pants on fire', 'misleading', 'hoax']):
+            return -1.0
+        
+        # Partially true/uncertain indicators
+        if any(word in rating_lower for word in ['mostly false', 'partially', 'mixture', 'disputed', 'uncertain']):
+            return -0.5
+        
+        # Mostly true indicators
+        if any(word in rating_lower for word in ['mostly true', 'correct', 'accurate']):
+            return 0.5
+            
+        # Real indicators
+        if any(word in rating_lower for word in ['true', 'real', 'verified']):
+            return 1.0
+            
+        return 0.0
+
+    @staticmethod
+    def get_weighted_evidence(fact_checks: List[FactCheck]) -> Tuple[float, float]:
+        """
+        Calculate a consensus score and confidence from fact-checks.
+        Returns: (consensus_score, weight)
+        """
+        if not fact_checks:
+            return 0.0, 0.0
+            
+        scores = [FactCheckService.normalize_rating(fc.rating) for fc in fact_checks]
+        
+        # Simple weighted average (can be improved)
+        consensus = sum(scores) / len(scores)
+        # Weight based on number of fact-checks (logarithmic scaling)
+        import math
+        weight = min(1.0, math.log(len(fact_checks) + 1, 4)) 
+        
+        return consensus, weight
+
+    @staticmethod
     async def get_fact_check_summary(fact_checks: List[FactCheck]) -> str:
         """
         Generate summary from fact checks

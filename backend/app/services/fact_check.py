@@ -6,7 +6,7 @@ Integrates with Google Fact Check API
 import os
 import logging
 import aiohttp
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from app.schemas.analysis import FactCheck
 
 logger = logging.getLogger(__name__)

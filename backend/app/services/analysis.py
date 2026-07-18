@@ -4,7 +4,8 @@ Handles database operations for analyses
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+import asyncio
 from typing import List, Optional, Dict
 from bson import ObjectId
 from app.database import get_database
@@ -144,41 +145,72 @@ class AnalysisService:
             db = get_database()
             analyses_collection = db["analyses"]
             
-            total = await analyses_collection.count_documents({})
+            # 1. Pipeline for counts by prediction (Group by prediction)
+            counts_pipeline = [
+                {"$group": {"_id": "$prediction", "count": {"$sum": 1}}}
+            ]
             
-            # Count by prediction
-            fake_count = await analyses_collection.count_documents({"prediction": "Fake"})
-            real_count = await analyses_collection.count_documents({"prediction": "Real"})
-            misleading_count = await analyses_collection.count_documents({"prediction": "Misleading"})
-            
-            # Calculate average confidence
-            pipeline = [
+            # 2. Pipeline for average confidence
+            avg_conf_pipeline = [
                 {"$group": {"_id": None, "avg_confidence": {"$avg": "$confidence"}}}
             ]
-            result = await analyses_collection.aggregate(pipeline).to_list(length=1)
-            avg_confidence = result[0]["avg_confidence"] if result else 0
             
-            # Get predictions by date (last 7 days)
-            pipeline = [
+            # 3. Pipeline for predictions by date (last 7 days)
+            seven_days_ago = datetime.utcnow() - timedelta(days=7)
+            date_pipeline = [
+                {"$match": {"created_at": {"$gte": seven_days_ago}}},
                 {"$group": {
                     "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
                     "count": {"$sum": 1}
                 }},
                 {"$sort": {"_id": 1}}
             ]
-            predictions_by_date = {}
-            async for doc in analyses_collection.aggregate(pipeline):
-                predictions_by_date[doc["_id"]] = doc["count"]
             
-            # Get top headlines
-            pipeline = [
-                {"$sort": {"created_at": -1}},
-                {"$limit": 5},
-                {"$project": {"headline": 1}}
-            ]
-            top_headlines = []
-            async for doc in analyses_collection.aggregate(pipeline):
-                top_headlines.append(doc["headline"])
+            # 4. Query for top headlines (last 5)
+            top_headlines_query = (
+                analyses_collection.find({}, {"headline": 1})
+                .sort("created_at", -1)
+                .limit(5)
+            )
+
+            # Execute aggregations and queries concurrently
+            counts_task = analyses_collection.aggregate(counts_pipeline).to_list(length=10)
+            avg_conf_task = analyses_collection.aggregate(avg_conf_pipeline).to_list(length=1)
+            date_task = analyses_collection.aggregate(date_pipeline).to_list(length=10)
+            top_headlines_task = top_headlines_query.to_list(length=5)
+            
+            counts_res, avg_conf_res, date_res, top_res = await asyncio.gather(
+                counts_task,
+                avg_conf_task,
+                date_task,
+                top_headlines_task
+            )
+            
+            # Process counts
+            fake_count = 0
+            real_count = 0
+            misleading_count = 0
+            total = 0
+            
+            for item in counts_res:
+                pred = item["_id"]
+                count = item["count"]
+                total += count
+                if pred == "Fake":
+                    fake_count = count
+                elif pred == "Real":
+                    real_count = count
+                elif pred == "Misleading":
+                    misleading_count = count
+            
+            # Process average confidence
+            avg_confidence = avg_conf_res[0]["avg_confidence"] if avg_conf_res else 0
+            
+            # Process predictions by date
+            predictions_by_date = {doc["_id"]: doc["count"] for doc in date_res if doc.get("_id")}
+            
+            # Process top headlines
+            top_headlines = [doc["headline"] for doc in top_res if "headline" in doc]
             
             return {
                 "total_analyses": total,

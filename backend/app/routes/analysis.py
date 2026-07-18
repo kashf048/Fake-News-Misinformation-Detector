@@ -21,6 +21,7 @@ from app.services.ai_models import AIModels, TextAnalyzer, ImageAnalyzer
 from app.services.fact_check import FactCheckService
 from app.services.analysis import AnalysisService
 from app.services.report import ReportService
+from app.utils.validators import InputValidator, XSSProtection
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["analysis"])
@@ -32,6 +33,21 @@ async def analyze(request: AnalysisRequest):
     Analyze headline and image for misinformation
     """
     try:
+        # Sanitize and validate headline input
+        try:
+            sanitized_headline = XSSProtection.remove_html_tags(request.headline)
+            sanitized_headline = InputValidator.validate_headline(sanitized_headline)
+            # Escape HTML to prevent XSS
+            sanitized_headline = XSSProtection.escape_html(sanitized_headline)
+            request.headline = sanitized_headline
+        except ValueError as val_err:
+            raise HTTPException(status_code=400, detail=str(val_err))
+
+        # Validate image URL format if provided
+        if request.image_url:
+            if not InputValidator.validate_image_url(request.image_url):
+                raise HTTPException(status_code=400, detail="Invalid image URL format or unsupported extension")
+
         logger.info(f"Analyzing headline: {request.headline[:50]}...")
         
         # Analyze text
@@ -45,17 +61,19 @@ async def analyze(request: AnalysisRequest):
         similarity = None
         if request.image_url:
             try:
-                if ImageAnalyzer.validate_image_url(request.image_url):
+                is_valid_image = await run_in_threadpool(ImageAnalyzer.validate_image_url, request.image_url)
+                if is_valid_image:
                     logger.info(f"[yellow]Running image-text similarity analysis...[/yellow]")
                     img_start = time.time()
-                    similarity = await AIModels.analyze_image_text_similarity(
+                    similarity = await run_in_threadpool(
+                        AIModels.analyze_image_text_similarity,
                         request.image_url,
                         request.headline
                     )
                     img_time = time.time() - img_start
                     logger.info(f"[green]Image analysis completed in {img_time:.2f}s[/green]")
                 else:
-                    logger.warning(f"Invalid image URL: {request.image_url}")
+                    logger.warning(f"Invalid or inaccessible image URL: {request.image_url}")
             except Exception as e:
                 logger.error(f"Error analyzing image: {e}")
         
@@ -122,6 +140,8 @@ async def analyze(request: AnalysisRequest):
             created_at=analysis["created_at"]
         )
         
+    except HTTPException as http_err:
+        raise http_err
     except Exception as e:
         logger.error(f"Error in analyze endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -137,6 +157,14 @@ async def get_history(
     Get analysis history with pagination
     """
     try:
+        # Validate pagination and filter params
+        page, limit = InputValidator.validate_pagination(page, limit)
+        if prediction:
+            try:
+                prediction = InputValidator.validate_filter(prediction)
+            except ValueError as val_err:
+                raise HTTPException(status_code=400, detail=str(val_err))
+
         logger.info(f"Fetching history: page={page}, limit={limit}, prediction={prediction}")
         
         result = await AnalysisService.get_history(
@@ -167,6 +195,8 @@ async def get_history(
             items=items
         )
         
+    except HTTPException as http_err:
+        raise http_err
     except Exception as e:
         logger.error(f"Error fetching history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -187,6 +217,8 @@ async def delete_analysis(analysis_id: str):
         else:
             raise HTTPException(status_code=404, detail="Analysis not found")
             
+    except HTTPException as http_err:
+        raise http_err
     except Exception as e:
         logger.error(f"Error deleting analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -212,6 +244,8 @@ async def get_analytics():
             top_headlines=analytics["top_headlines"]
         )
         
+    except HTTPException as http_err:
+        raise http_err
     except Exception as e:
         logger.error(f"Error fetching analytics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -246,6 +280,8 @@ async def download_report(analysis_id: str):
             media_type="application/pdf"
         )
         
+    except HTTPException as http_err:
+        raise http_err
     except Exception as e:
         logger.error(f"Error serving PDF report: {e}")
         raise HTTPException(status_code=500, detail=str(e))

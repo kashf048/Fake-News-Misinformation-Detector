@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from app.database import connect_to_mongo, close_mongo_connection
 from app.services.ai_models import AIModels
 from app.routes.analysis import router as analysis_router
+from app.middleware import ErrorHandler, RequestLogger, rate_limit_middleware
 
 # Load environment variables
 load_dotenv()
@@ -85,6 +86,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register custom middlewares (executed in reverse order: error handling -> logging -> rate limiting)
+@app.middleware("http")
+async def error_handling_middleware(request, call_next):
+    return await ErrorHandler.handle_errors(request, call_next)
+
+@app.middleware("http")
+async def request_logging_middleware(request, call_next):
+    return await RequestLogger.log_request(request, call_next)
+
+@app.middleware("http")
+async def rate_limiting_middleware(request, call_next):
+    return await rate_limit_middleware(request, call_next)
 
 # Include routers
 app.include_router(analysis_router)

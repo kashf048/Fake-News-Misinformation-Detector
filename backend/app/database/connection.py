@@ -190,7 +190,10 @@ class MockCollection:
         docs = [dict(d) for d in self.docs]
 
         for stage in pipeline:
-            if "$sort" in stage:
+            if "$match" in stage:
+                match_query = stage["$match"]
+                docs = [d for d in docs if self._matches(d, match_query)]
+            elif "$sort" in stage:
                 sort_stage = stage["$sort"]
                 for key, direction in sort_stage.items():
                     def get_sort_key(d):

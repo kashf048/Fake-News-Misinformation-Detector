@@ -44,7 +44,10 @@ async def lifespan(app: FastAPI):
         await connect_to_mongo()
         
         # Initialize AI models
-        await AIModels.initialize_models()
+        try:
+            await AIModels.initialize_models()
+        except Exception as model_err:
+            logger.error(f"Failed to initialize AI models on startup (running in fallback mode): {model_err}")
         
         logger.info("Application startup completed successfully")
         
@@ -139,7 +142,7 @@ async def global_exception_handler(request, exc):
 if __name__ == "__main__":
     import uvicorn
     
-    port = int(os.getenv("API_PORT", 8000))
+    port = int(os.getenv("PORT", os.getenv("API_PORT", 8000)))
     host = os.getenv("API_HOST", "0.0.0.0")
     
     uvicorn.run(

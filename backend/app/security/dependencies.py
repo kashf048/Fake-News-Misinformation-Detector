@@ -5,7 +5,7 @@ FastAPI dependencies for authentication and authorization
 
 from typing import Optional
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.security.auth import JWTHandler, TokenData
 from app.services.user import UserService
 
@@ -13,7 +13,7 @@ security = HTTPBearer()
 
 
 async def get_current_user(
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> TokenData:
     """
     Get current authenticated user from JWT token
@@ -39,7 +39,7 @@ async def get_current_user(
 
 
 async def get_optional_user(
-    credentials: Optional[HTTPAuthCredentials] = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Optional[TokenData]:
     """
     Get optional authenticated user (can be None)

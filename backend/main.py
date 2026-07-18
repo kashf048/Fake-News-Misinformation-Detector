@@ -6,6 +6,7 @@ Fake News & Misinformation Detector API
 import os
 import logging
 from rich.logging import RichHandler
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -32,6 +33,34 @@ for name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
     uv_logger.handlers = [RichHandler(rich_tracebacks=True, markup=True)]
     uv_logger.propagate = False
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler"""
+    try:
+        logger.info("Starting up Fake News Detector API...")
+        
+        # Connect to MongoDB
+        await connect_to_mongo()
+        
+        # Initialize AI models
+        await AIModels.initialize_models()
+        
+        logger.info("Application startup completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Startup error: {e}")
+        raise
+        
+    yield
+    
+    try:
+        logger.info("Shutting down Fake News Detector API...")
+        await close_mongo_connection()
+        logger.info("Application shutdown completed")
+        
+    except Exception as e:
+        logger.error(f"Shutdown error: {e}")
+
 # Create FastAPI app
 app = FastAPI(
     title="Fake News & Misinformation Detector",
@@ -39,7 +68,8 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json"
+    openapi_url="/api/openapi.json",
+    lifespan=lifespan
 )
 
 # CORS Configuration
@@ -58,37 +88,6 @@ app.add_middleware(
 
 # Include routers
 app.include_router(analysis_router)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize on startup"""
-    try:
-        logger.info("Starting up Fake News Detector API...")
-        
-        # Connect to MongoDB
-        await connect_to_mongo()
-        
-        # Initialize AI models
-        await AIModels.initialize_models()
-        
-        logger.info("Application startup completed successfully")
-        
-    except Exception as e:
-        logger.error(f"Startup error: {e}")
-        raise
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    try:
-        logger.info("Shutting down Fake News Detector API...")
-        await close_mongo_connection()
-        logger.info("Application shutdown completed")
-        
-    except Exception as e:
-        logger.error(f"Shutdown error: {e}")
 
 
 @app.get("/")
